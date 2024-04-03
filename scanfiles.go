@@ -11,8 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"math/rand"
-	"net"
 	"log"
 
 	"github.com/fatih/color"
