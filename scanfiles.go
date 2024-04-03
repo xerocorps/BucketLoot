@@ -10,6 +10,10 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
+	"math/rand"
+	"net"
+	"log"
 
 	"github.com/fatih/color"
 	tld "github.com/jpillora/go-tld"
@@ -18,11 +22,60 @@ import (
 var tempDir = ".temp"
 var tempFileSuffix = "temp_s3_file_"
 
+var dnsServers = []string{
+	"8.8.8.8",   // Google Public DNS (IPv4)
+	"1.1.1.1",   // Cloudflare DNS (IPv4)
+	"208.67.222.222", // OpenDNS (IPv4)
+	"9.9.9.9",   // Quad9 DNS (IPv4)
+	"75.75.75.75", // Comcast DNS (IPv4)
+	"2001:4860:4860::8888", // Google Public DNS (IPv6)
+	"2606:4700:4700::1111", // Cloudflare DNS (IPv6)
+	"2620:0:ccc::2", // OpenDNS (IPv6)
+	"2620:fe::9",    // Quad9 DNS (IPv6)
+	"2001:558:feed::1", // Comcast DNS (IPv6)
+	"209.244.0.3",
+	"209.244.0.4",
+	"8.8.4.4",
+	"8.26.56.26",
+	"8.20.247.20",
+	"208.67.222.222",
+	"208.67.220.220",
+	"156.154.70.1",
+	"156.154.71.1",
+	"199.85.126.10",
+	"199.85.127.10",
+	"81.218.119.11",
+	"209.88.198.133",
+	"195.46.39.39",
+	"195.46.39.40",
+	"216.87.84.211",
+	"23.90.4.6",
+	"199.5.157.131",
+	"208.71.35.137",
+	"208.76.50.50",
+	"208.76.51.51",
+	"216.146.35.35",
+	"216.146.36.36",
+	"89.233.43.71",
+	"89.104.194.142",
+	"74.82.42.42",
+	"109.69.8.51",
+}
+
 func scanS3FilesSlow(fileURLs []string, bucketURL string) error {
 	var errors []error
 
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		return err
+	}
+	
+	// Check for network connectivity
+	for {
+		if isInternetConnected() {
+			break
+		}
+		log.Println("Waiting for internet connection...")
+		time.Sleep(30 * time.Second) // Wait for 30 seconds before rechecking
 	}
 
 	//BELOW CODE BLOCK IS FOR ARRANGING BUCKETLOOT OUTPUT
@@ -109,17 +162,6 @@ func scanS3FilesSlow(fileURLs []string, bucketURL string) error {
 							errors = append(errors, fmt.Errorf("error notifying! %s", err))
 						}
 					}
-					if platforms[1].Slack != "" {
-						err := notifySlack(platforms[1].Slack, "BucketLoot discovered a secret! | SECRET TYPE: "+rule.Title+" | SECRET URL: "+fileURL+" | SECRET SEVERITY: "+rule.Severity+" | BUCKET URL: "+bucketURL)
-						if err != nil {
-							if strings.Contains(err.Error(), "200") {
-								fmt.Println("Notified successfully! [SLACK]")
-							} else {
-								fmt.Println("Couldn't notify! [SLACK]")
-							}
-							errors = append(errors, fmt.Errorf("error notifying! %s", err))
-						}
-					}
 				}
 			}
 		}
@@ -152,17 +194,6 @@ func scanS3FilesSlow(fileURLs []string, bucketURL string) error {
 									fmt.Println("Notified successfully!")
 								} else {
 									fmt.Println("Couldn't notify!")
-								}
-								errors = append(errors, fmt.Errorf("error notifying! %s", err))
-							}
-						}
-						if platforms[1].Slack != "" {
-							err := notifySlack(platforms[1].Slack, "BucketLoot discovered a potentially sensitive file! | INFO: "+check.Name+" | FILE URL: "+fileURL+" | BUCKET URL: "+bucketURL)
-							if err != nil {
-								if strings.Contains(err.Error(), "200") {
-									fmt.Println("Notified successfully! [SLACK]")
-								} else {
-									fmt.Println("Couldn't notify! [SLACK]")
 								}
 								errors = append(errors, fmt.Errorf("error notifying! %s", err))
 							}
@@ -258,6 +289,15 @@ func scanS3FilesFast(fileURLs []string, bucketURL string) error {
 
 	bucketScanRes := bucketLootResStruct{
 		BucketUrl: bucketURL,
+	}
+	
+	// Check for network connectivity
+	for {
+		if isInternetConnected() {
+			break
+		}
+		log.Println("Waiting for internet connection...")
+		time.Sleep(30 * time.Second) // Wait for 30 seconds before rechecking
 	}
 
 	for _, fileURL := range fileURLs {
@@ -368,17 +408,6 @@ func scanS3FilesFast(fileURLs []string, bucketURL string) error {
 								errors = append(errors, fmt.Errorf("error notifying! %s", err))
 							}
 						}
-						if platforms[1].Slack != "" {
-							err := notifySlack(platforms[1].Slack, "BucketLoot discovered a secret! | SECRET TYPE: "+rule.Title+" | SECRET URL: "+url+" | SECRET SEVERITY: "+rule.Severity+" | BUCKET URL: "+bucketURL)
-							if err != nil {
-								if strings.Contains(err.Error(), "200") {
-									fmt.Println("Notified successfully! [SLACK]")
-								} else {
-									fmt.Println("Couldn't notify! [SLACK]")
-								}
-								errors = append(errors, fmt.Errorf("error notifying! %s", err))
-							}
-						}
 					}
 				}
 			}
@@ -412,17 +441,6 @@ func scanS3FilesFast(fileURLs []string, bucketURL string) error {
 										fmt.Println("Notified successfully! [DISCORD]")
 									} else {
 										fmt.Println("Couldn't notify! [DISCORD]")
-									}
-									errors = append(errors, fmt.Errorf("error notifying! %s", err))
-								}
-							}
-							if platforms[1].Slack != "" {
-								err := notifySlack(platforms[1].Slack, "BucketLoot discovered a potentially sensitive file! | INFO: "+check.Name+" | FILE URL: "+url+" | BUCKET URL: "+bucketURL)
-								if err != nil {
-									if strings.Contains(err.Error(), "200") {
-										fmt.Println("Notified successfully! [SLACK]")
-									} else {
-										fmt.Println("Couldn't notify! [SLACK]")
 									}
 									errors = append(errors, fmt.Errorf("error notifying! %s", err))
 								}
@@ -505,4 +523,39 @@ func scanS3FilesFast(fileURLs []string, bucketURL string) error {
 	}
 
 	return nil
+}
+func isInternetConnected() bool {
+	rand.Seed(time.Now().UnixNano())
+
+	// Shuffle the dnsServers slice randomly
+	shuffledDNS := make([]string, len(dnsServers))
+	copy(shuffledDNS, dnsServers)
+	rand.Shuffle(len(shuffledDNS), func(i, j int) {
+		shuffledDNS[i], shuffledDNS[j] = shuffledDNS[j], shuffledDNS[i]
+	})
+	// Check if there's an active network connection
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		log.Println("[INTERNET CHECK ERROR]:", err)
+		return false
+	}
+
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				for {
+					for _, dnsServer := range shuffledDNS {
+						_, err := net.LookupHost(dnsServer)
+						if err == nil {
+							return true
+						}
+					}
+			
+					log.Println("Waiting for internet connection...")
+					time.Sleep(2 * time.Second) // Wait for 5 seconds before rechecking
+				}
+			}
+		}
+	}
+	return false
 }
