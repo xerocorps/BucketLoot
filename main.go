@@ -10,7 +10,6 @@ import (
 	"time"
 	"math/rand"
 	"net"
-	"log"
 )
 
 var dnsServers = []string{
