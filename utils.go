@@ -252,7 +252,7 @@ func listS3BucketFiles(bucketURLs []string) {
 							// Retrieve the list of objects in the bucket
 							params := &s3.ListObjectsInput{
 								Bucket:  aws.String(awsBucketName),
-								MaxKeys: aws.Int64(1000),
+								MaxKeys: aws.Int64(10000),
 							}
 							err = svc.ListObjectsPages(params, func(page *s3.ListObjectsOutput, lastPage bool) bool {
 								for _, obj := range page.Contents {
